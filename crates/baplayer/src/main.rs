@@ -11,6 +11,8 @@ use color_eyre::eyre::Result;
 #[derive(Parser)]
 struct Cli {
     path: String,
+    #[arg(short, long)]
+    sixel: bool,
 }
 
 fn main() -> Result<()> {
@@ -41,24 +43,47 @@ fn main() -> Result<()> {
         }
 
         let mut frame = "\x1B[2J".to_owned();
-        for y in 0..height / 4 {
-            for x in 0..width / 2 {
-                let start_pos = width as usize * y as usize * 4 + x as usize * 2;
-                frame.push(
-                    get_unicode_char(&[
-                        decoded_frame[start_pos],
-                        decoded_frame[start_pos + 1],
-                        decoded_frame[start_pos + width as usize],
-                        decoded_frame[start_pos + width as usize + 1],
-                        decoded_frame[start_pos + width as usize * 2],
-                        decoded_frame[start_pos + width as usize * 2 + 1],
-                        decoded_frame[start_pos + width as usize * 3],
-                        decoded_frame[start_pos + width as usize * 3 + 1],
-                    ])
-                    .expect("msg"),
-                )
+        if args.sixel {
+            frame.push_str("\x1BP8;0;;q\n#0;2;0;0;0#1;2;100;100;100\n");
+            for y in 0..height / 6 {
+                frame.push_str("#1");
+                for x in 0..width {
+                    let start_pos = width as usize * y as usize * 6 + x as usize;
+                    frame.push(
+                        get_sixel_char(&[
+                            decoded_frame[start_pos],
+                            decoded_frame[start_pos + width as usize],
+                            decoded_frame[start_pos + width as usize * 2],
+                            decoded_frame[start_pos + width as usize * 3],
+                            decoded_frame[start_pos + width as usize * 4],
+                            decoded_frame[start_pos + width as usize * 5],
+                        ])
+                        .expect("msg"),
+                    );
+                }
+                frame.push_str("-\n");
             }
-            frame.push('\n');
+            frame.push_str("\x1B\\\n");
+        } else {
+            for y in 0..height / 4 {
+                for x in 0..width / 2 {
+                    let start_pos = width as usize * y as usize * 4 + x as usize * 2;
+                    frame.push(
+                        get_unicode_char(&[
+                            decoded_frame[start_pos],
+                            decoded_frame[start_pos + 1],
+                            decoded_frame[start_pos + width as usize],
+                            decoded_frame[start_pos + width as usize + 1],
+                            decoded_frame[start_pos + width as usize * 2],
+                            decoded_frame[start_pos + width as usize * 2 + 1],
+                            decoded_frame[start_pos + width as usize * 3],
+                            decoded_frame[start_pos + width as usize * 3 + 1],
+                        ])
+                        .expect("msg"),
+                    )
+                }
+                frame.push('\n');
+            }
         }
         let mut lock = stdout().lock();
         write!(lock, "{}", frame).unwrap();
@@ -118,4 +143,13 @@ pub fn get_unicode_char(input: &[u8; 8]) -> Option<char> {
         + int(input[7]) * 0x80;
 
     return char::from_u32(0x2800 + hex);
+}
+pub fn get_sixel_char(input: &[u8; 6]) -> Option<char> {
+    let hex: u32 = int(input[0]) * 0b00000001
+        | int(input[1]) * 0b00000010
+        | int(input[2]) * 0b00000100
+        | int(input[3]) * 0b00001000
+        | int(input[4]) * 0b00010000
+        | int(input[5]) * 0b00100000;
+    return char::from_u32(63 + hex);
 }
